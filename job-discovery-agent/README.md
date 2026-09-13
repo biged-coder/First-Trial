@@ -14,6 +14,56 @@ The workflow has already been built and published in your n8n instance as
 **"Job Discovery & Verification Agent"**. `workflow.json` in this folder is an
 importable snapshot of that build, kept here for version control / portability.
 
+## Changelog: issues found and fixed during setup/testing
+
+The workflow was built, then run repeatedly against live services (Apify,
+Exa, DeepSeek, Google Sheets) to validate it end to end. That surfaced six
+real problems, all now fixed in both the live n8n workflow and this
+`workflow.json`:
+
+1. **Apify actor rental block.** The originally-planned `bebity/linkedin-jobs-scraper`
+   requires renting a paid plan even during its free trial ("You must rent a
+   paid Actor..."). Swapped to `curious_coder/linkedin-jobs-scraper`
+   (pay-per-event, ~$0.001-0.002/result), which runs on Apify's $5/month free
+   platform credit with no rental step. See section 4 below.
+2. **Batch loops silently stalling on error.** The `Log Apify/Exa Error to
+   Sheet` branches logged failures but never reconnected to their loop's
+   next-batch input, so a single failed query or listing halted the rest of
+   the run without any error at the workflow level. Fixed by connecting both
+   error-log nodes back into their `Split In Batches` node.
+3. **`Clear Raw Listings Table` was swallowing the entire query list.**
+   It sat inline between `Build Apify Queries` and `Apify Query Loop`. A
+   Data Table "clear" operation always emits exactly one output item (its
+   own result), regardless of `executeOnce`, so every one of the 30
+   generated title x location queries except a single phantom item was
+   silently discarded before reaching the loop -- `Apify Query Loop` was
+   only ever processing one item with no real `title`/`location`. This went
+   unnoticed at first because the old rental-blocked actor errored out
+   before validating its input either way. Fixed by making `Clear Raw
+   Listings Table` a parallel dead-end side-effect branch off `Build Apify
+   Queries`, while `Apify Query Loop` now connects directly to `Build Apify
+   Queries` and receives the full query list.
+4. **`Verified?` IF node strict-type error.** The boolean "is true" operator
+   errored ("'' is a string but was expecting a boolean") under strict type
+   validation even though the operation needs no `rightValue`. Switched to
+   loose type validation.
+5. **Item-lineage (`pairedItem`) break in `Dedupe and Filter Listings`.**
+   The Code node built fresh output items without carrying `pairedItem`
+   forward. This worked by accident whenever exactly one listing survived
+   filtering (n8n can trivially infer a singleton's lineage) but broke as
+   soon as two or more listings survived, throwing "Paired item data ... is
+   unavailable" inside `Exa Verify Search`. Fixed by explicitly forwarding
+   `pairedItem` from each input item.
+6. **Noisy/irrelevant search matches.** LinkedIn's keyword search (via the
+   Apify actor, with or without quoted phrases) stems on word roots, so a
+   query for "Trade Commissioner" returned trading-desk and dealer jobs
+   ("Trading Operations Officer", "Dealer", etc.) that share no real meaning
+   with the target role. Added a relevance filter -- see "Relevance
+   filtering" below.
+
+All six were confirmed fixed via live end-to-end test executions (taxonomy
+extraction through Google Sheets writes) before this file was last updated.
+
 ## Architecture
 
 ```
@@ -22,22 +72,26 @@ Manual Trigger
   -> Resume Text (Set: candidate profile)
   -> Extract Job Title Taxonomy (AI Agent, DeepSeek + structured output)
   -> Build Apify Queries (Code: taxonomy x locations, capped at 30)
-  -> Clear Raw Listings Table (Data Table, fresh slate per run)
-  -> Apify Query Loop (Split In Batches, size 1)
-       -> Run Apify Actor (sync)          [HTTP, run-sync-get-dataset-items]
-       -> Tag Raw Listings with Query Meta (Code)
-       -> Insert Raw Listings              [Data Table: job_discovery_raw_listings]
-       -> (loop)
-     onDone:
-       -> Get All Raw Listings             [Data Table, returnAll]
-       -> Dedupe and Filter Listings        (Code: company+title key, postedWithinDays)
-       -> Listings Loop (Split In Batches, size 1)
-            -> Exa Verify Search            [HTTP -> api.exa.ai/search]
-            -> Check Verified URL           (Code: domain + path heuristics)
-            -> Verified? (IF)
-                 true  -> Company Research Agent (AI Agent) -> Upsert Job Pipeline Row (Google Sheets, upsert on Verified URL)
-                 false -> Log Unverified Listing (Google Sheets append)
+       -> Clear Raw Listings Table (Data Table "clear", parallel side-effect branch, dead-ended)
+       -> Apify Query Loop (Split In Batches, size 1)
+            -> Run Apify Actor (sync)          [HTTP, run-sync-get-dataset-items]
+            -> Tag Raw Listings with Query Meta (Code)
+            -> Insert Raw Listings              [Data Table: job_discovery_raw_listings]
+            -> (loop)
+          onDone:
+            -> Get All Raw Listings             [Data Table, returnAll]
+            -> Dedupe, relevance-filter, and age-filter Listings (Code)
+            -> Listings Loop (Split In Batches, size 1)
+                 -> Exa Verify Search            [HTTP -> api.exa.ai/search]
+                 -> Check Verified URL           (Code: domain + path heuristics)
+                 -> Verified? (IF)
+                      true  -> Company Research Agent (AI Agent) -> Upsert Job Pipeline Row (Google Sheets, upsert on Verified URL)
+                      false -> Log Unverified Listing (Google Sheets append)
 ```
+
+Note: `Clear Raw Listings Table` and `Apify Query Loop` are **both** fed
+directly from `Build Apify Queries` (a fan-out, not a chain) -- see
+Changelog item 3 for why it must not sit inline between them.
 
 Error handling: the two external HTTP calls (Apify, Exa) use
 `onError: continueErrorOutput`, routing failures to a `Format ... Error` Set
@@ -65,7 +119,29 @@ iterations back into the "done" output. To dedupe across *all* Apify queries
 in one run (not just within a single query), listings are staged in a
 Data Table (`job_discovery_raw_listings`) during the query loop, then read
 back in full once the loop finishes. This table is cleared at the start of
-each run, so it only ever holds the current run's raw data.
+each run (as a side-effect branch off `Build Apify Queries` -- see Changelog
+item 3 for why it can't sit inline in the main chain), so it only ever holds
+the current run's raw data.
+
+### Relevance filtering
+
+Job-board keyword search -- LinkedIn's own search underlying the Apify actor,
+quoted phrase or not -- matches on word roots. A search for a specific,
+uncommon title like "Trade Commissioner" returns "Trading Operations
+Officer", "Dealer", and similar trading-desk jobs, because they share the
+root "trad-". Exa verification alone doesn't catch this: a trading job at a
+real company still has a real, verifiable careers page.
+
+`Dedupe and Filter Listings` therefore also runs a relevance check before
+anything reaches Exa or Sheets: it builds a vocabulary of meaningful words
+(5+ letters, common role-words like "director"/"head"/"trade"/"trading"
+excluded) from the taxonomy entry's own title, alternate titles, and search
+keywords, then keeps a listing only if its actual title shares at least one
+of those words. This runs entirely on data already carried through the
+pipeline (no extra API calls), and is intentionally permissive -- it only
+screens out titles that share *no* real vocabulary with what was searched
+for, not a strict fit judgment (that's what `Verified?` and Fit Score are
+for).
 
 ## Setup
 
@@ -157,11 +233,22 @@ If you swap to a different actor, update `apifyActorId` in Config, then:
 
 ### 5. Resume / candidate profile
 
-Edit the **Resume Text** Set node's `resumeText` field to update the
-candidate profile fed into the taxonomy agent. The target job tiers
+The **Resume Text** Set node's `resumeText` field now contains the
+candidate's actual CV content (contact details stripped before sending to
+the LLM) rather than a hand-written summary -- this matters because the
+taxonomy agent's `rationale` field is only as specific as the input: with
+the real CV it correctly grounds its reasoning in specifics like BESS
+project capital syndication, ODI advisory, and family office fundraising
+work, instead of generic "trade and investment experience" phrasing. Edit
+this field directly to update the candidate profile. The target job tiers
 (Tier 1/2/3 definitions) are embedded directly in the **Extract Job Title
 Taxonomy** node's prompt — see `prompts/taxonomy_prompt.txt` for the exact
 text and how to edit it.
+
+Note on this repo file: `workflow.json` includes the resume text verbatim
+(as it's stored in the live n8n node), since this is a private working
+repository. If this ever needs to be shared more widely, replace that field
+with a placeholder before doing so.
 
 ## Running it
 
@@ -195,6 +282,10 @@ For production use, replace the Manual Trigger with a **Schedule Trigger**
 - **Verification-first**: only listings with a `verifiedUrl` from Exa reach
   `Job Pipeline`; everything else goes to `Unverified` for manual review
   rather than being silently dropped.
+- **Relevance filtering**: listings that share no real vocabulary with the
+  taxonomy entry that generated the search (e.g. trading-desk jobs surfaced
+  by a "Trade Commissioner" query) are dropped before Exa/AI/Sheets cost is
+  spent on them -- see "Relevance filtering" above.
 - **Error handling**: Apify/Exa call failures are caught (`continueErrorOutput`)
   and logged to `Error Log` instead of failing the whole execution.
 - **No direct LinkedIn scraping**: job search goes through the Apify actor
