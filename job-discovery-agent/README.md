@@ -41,8 +41,10 @@ Manual Trigger
 
 Error handling: the two external HTTP calls (Apify, Exa) use
 `onError: continueErrorOutput`, routing failures to a `Format ... Error` Set
-node and then an append to the `Error Log` sheet tab, so a single bad request
-never kills the run.
+node and then an append to the `Error Log` sheet tab. Each error branch then
+reconnects into its loop's `Split In Batches` node (acting as `nextBatch`),
+so a single bad request logs and moves on to the next query/listing instead
+of silently stalling the rest of the run.
 
 ### Why "run-sync" instead of a manual poll loop
 
@@ -110,7 +112,8 @@ in the build since spreadsheet IDs are account-specific).
 
 Open the **Config** node to adjust, without touching any other node:
 
-- `apifyActorId` — Apify actor to run (default: `bebity~linkedin-jobs-scraper`).
+- `apifyActorId` — Apify actor to run (default: `curious_coder~linkedin-jobs-scraper`,
+  a pay-per-result actor — see below for why).
 - `apifyMaxResultsPerQuery` — results requested per query (default 50).
 - `maxApifyQueries` — hard cap on total Apify queries per run (default 30).
 - `postedWithinDays` — drop listings older than this (default 30).
@@ -118,20 +121,39 @@ Open the **Config** node to adjust, without touching any other node:
 - `locations` — array of locations to combine with each taxonomy title
   (default `["Hong Kong", "Singapore", "Remote", "Australia"]`).
 
-### 4. Swapping the Apify actor
+### 4. Apify actor: `curious_coder~linkedin-jobs-scraper`
 
-The **Run Apify Actor (sync)** node sends a generic body:
-`{ "title": ..., "location": ..., "rows": ... }`. Different Apify actors
-expect different input field names (e.g. `searchTerms`, `positionName`,
-`maxItems`, `csvDownloadLink`, etc.). If you change `apifyActorId` in Config,
-open this node and update `jsonBody` to match that actor's input schema —
-check the actor's page on the Apify Store ("Input" tab) for the exact fields.
+The build originally targeted `bebity~linkedin-jobs-scraper`, but that actor's
+free trial had expired on this account ("You must rent a paid Actor..."),
+and its rental model doesn't draw from Apify's free monthly platform credit.
+`curious_coder/linkedin-jobs-scraper` is priced **pay-per-event** (~$0.001–
+0.002 per result), so it runs entirely off Apify's $5/month free credit for
+low-to-moderate volumes (roughly 2,500–5,000 results/month) with no separate
+rental step. Verified live against a real query during setup (5 real Hong
+Kong-based "Trade Commissioner" search results returned successfully).
 
-Similarly, the **Tag Raw Listings with Query Meta** Code node reads several
-possible field names from the actor's output
-(`title`/`jobTitle`/`position`, `companyName`/`company`/`organization`, etc.)
-to be resilient across actors — add your actor's actual field names to those
-fallback chains if none match.
+Its input fields (confirmed from the actor's live input schema), wired into
+**Run Apify Actor (sync)**'s `jsonBody`:
+
+```json
+{ "keywords": "<title>", "location": "<location>", "limitPerSource": <apifyMaxResultsPerQuery>, "scrapeCompany": false }
+```
+
+Its output fields (confirmed from a live run) are `title`, `companyName`,
+`location`, `link`, `descriptionText`, `postedAt` — all already covered by
+the fallback chains in **Tag Raw Listings with Query Meta**, so no code
+changes were needed there.
+
+If you swap to a different actor, update `apifyActorId` in Config, then:
+- Update `jsonBody` on **Run Apify Actor (sync)** to that actor's real input
+  field names (check the actor's page on the Apify Store, "Input" tab, or
+  fetch `GET https://api.apify.com/v2/acts/{actorId}/builds/latest` with your
+  Apify credential and read the `data.inputSchema` field).
+- Add that actor's actual output field names to the fallback chains in
+  **Tag Raw Listings with Query Meta** if none of the existing ones
+  (`title`/`jobTitle`/`position`, `companyName`/`company`/`organization`,
+  `jobUrl`/`url`/`link`, `description`/`descriptionText`,
+  `postedAt`/`datePosted`/`postedDate`) match.
 
 ### 5. Resume / candidate profile
 
@@ -159,7 +181,11 @@ For production use, replace the Manual Trigger with a **Schedule Trigger**
 
 ## Guardrails already built in
 
-- **Cost caps**: `maxApifyQueries` (30) and `apifyMaxResultsPerQuery` (50) in Config.
+- **Cost caps**: `maxApifyQueries` (30) and `apifyMaxResultsPerQuery` (50) in Config,
+  and a pay-per-event actor that runs on Apify's free monthly credit at low volumes.
+- **Loop resilience**: a failed Apify or Exa call is logged to `Error Log` and
+  the batch loop continues to the next item, rather than the whole run silently
+  stopping partway through.
 - **Rate limiting**: `Split In Batches` (size 1) serializes Apify and Exa
   calls one at a time; Apify's own request batching/interval options are
   also available on the HTTP Request node if you need extra throttling.

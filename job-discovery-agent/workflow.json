@@ -3,7 +3,7 @@
   "nodes": [
     { "id": "31842156-8148-430b-a19d-d5ba27d4055b", "name": "Start (Manual Trigger)", "type": "n8n-nodes-base.manualTrigger", "typeVersion": 1, "position": [0, 0], "parameters": {} },
     { "id": "dc329376-cd10-485b-9468-9f4b9645d315", "name": "Config", "type": "n8n-nodes-base.set", "typeVersion": 3.5, "position": [220, 0], "parameters": { "mode": "manual", "includeOtherFields": false, "assignments": { "assignments": [
-      { "id": "a1", "name": "apifyActorId", "value": "bebity~linkedin-jobs-scraper", "type": "string" },
+      { "id": "a1", "name": "apifyActorId", "value": "curious_coder~linkedin-jobs-scraper", "type": "string" },
       { "id": "a2", "name": "apifyMaxResultsPerQuery", "value": 50, "type": "number" },
       { "id": "a3", "name": "maxApifyQueries", "value": 30, "type": "number" },
       { "id": "a4", "name": "postedWithinDays", "value": 30, "type": "number" },
@@ -35,7 +35,7 @@
       "sendBody": true,
       "contentType": "json",
       "specifyBody": "json",
-      "jsonBody": "={{ { \"title\": $json.title, \"location\": $json.location, \"rows\": $(\"Config\").item.json.apifyMaxResultsPerQuery } }}",
+      "jsonBody": "={{ { \"keywords\": $json.title, \"location\": $json.location, \"limitPerSource\": $(\"Config\").item.json.apifyMaxResultsPerQuery, \"scrapeCompany\": false } }}",
       "options": { "response": { "response": { "neverError": true } } }
     } },
     { "id": "26def13b-eb90-4e2d-8e69-f6bb0fa70dad", "name": "Tag Raw Listings with Query Meta", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [1780, 200], "parameters": { "mode": "runOnceForAllItems", "language": "javaScript", "jsCode": "const queryMeta = $('Apify Query Loop').item.json;\nreturn $input.all().map((item) => {\n  const d = item.json || {};\n  return {\n    json: {\n      queryTitle: queryMeta.title,\n      queryLocation: queryMeta.location,\n      tier: queryMeta.tier,\n      seniority: queryMeta.seniority,\n      title: d.title || d.jobTitle || d.position || '',\n      company: d.companyName || d.company || d.organization || '',\n      location: d.location || d.jobLocation || queryMeta.location,\n      sourceUrl: d.jobUrl || d.url || d.link || '',\n      description: (d.description || d.descriptionText || '').toString().slice(0, 500),\n      postedAt: (d.postedAt || d.datePosted || d.postedDate || '').toString(),\n    },\n  };\n});" } },
@@ -59,7 +59,7 @@
       { "id": "e3", "name": "Query", "value": "={{ $(\"Apify Query Loop\").item.json.query }}", "type": "string" },
       { "id": "e4", "name": "Message", "value": "={{ $json.error?.message || JSON.stringify($json) }}", "type": "string" }
     ] } } },
-    { "id": "0b282270-5f1a-47c7-944b-1e54c299b2b4", "name": "Log Apify Error to Sheet", "type": "n8n-nodes-base.googleSheets", "typeVersion": 4.7, "position": [2000, 420], "parameters": { "resource": "sheet", "operation": "append", "authentication": "serviceAccount", "documentId": { "__rl": true, "mode": "list", "value": "" }, "sheetName": { "__rl": true, "mode": "name", "value": "Error Log" }, "columns": { "mappingMode": "defineBelow", "value": {
+    { "id": "0b282270-5f1a-47c7-944b-1e54c299b2b4", "name": "Log Apify Error to Sheet", "type": "n8n-nodes-base.googleSheets", "typeVersion": 4.7, "position": [2000, 420], "parameters": { "resource": "sheet", "operation": "append", "authentication": "serviceAccount", "documentId": { "__rl": true, "mode": "id", "value": "1gI6vhq1nIoQaZZfGXoZ99OMLq4-PhL_bbbvJZ2Rst8M" }, "sheetName": { "__rl": true, "mode": "name", "value": "Error Log" }, "columns": { "mappingMode": "defineBelow", "value": {
       "Timestamp": "={{ $json.Timestamp }}", "Source": "={{ $json.Source }}", "Query": "={{ $json.Query }}", "Message": "={{ $json.Message }}"
     }, "schema": [
       { "id": "Timestamp", "displayName": "Timestamp", "type": "string", "display": true, "canBeUsedToMatch": true },
@@ -91,7 +91,7 @@
     } },
     { "id": "cb1421d6-1832-4e89-960d-b706b365b8b9", "name": "DeepSeek Model (Research)", "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek", "typeVersion": 1, "position": [2680, 700], "parameters": { "model": "deepseek-chat", "options": {} }, "credentials": { "deepSeekApi": { "id": "aKNVky4NdPwEdIgg", "name": "DeepSeek account" } } },
     { "id": "7d29f473-4e29-4c65-a282-ed65568a7113", "name": "Company Research Output Parser", "type": "@n8n/n8n-nodes-langchain.outputParserStructured", "typeVersion": 1.3, "position": [2840, 700], "parameters": { "schemaType": "fromJson", "jsonSchemaExample": "{\"summary\":\"Example three sentence company summary for due diligence.\",\"industry\":\"Financial Services\",\"size\":\"51-200 employees\",\"hq\":\"Hong Kong\",\"funding_stage\":\"Series B\",\"recent_news\":\"Raised a Series B round in 2025.\"}" } },
-    { "id": "13cb16d2-ff75-40c0-96d3-beef15ffb423", "name": "Upsert Job Pipeline Row", "type": "n8n-nodes-base.googleSheets", "typeVersion": 4.7, "position": [2900, 560], "parameters": { "resource": "sheet", "operation": "appendOrUpdate", "authentication": "serviceAccount", "documentId": { "__rl": true, "mode": "list", "value": "" }, "sheetName": { "__rl": true, "mode": "name", "value": "Job Pipeline" }, "columns": { "mappingMode": "defineBelow", "matchingColumns": ["Verified URL"], "value": {
+    { "id": "13cb16d2-ff75-40c0-96d3-beef15ffb423", "name": "Upsert Job Pipeline Row", "type": "n8n-nodes-base.googleSheets", "typeVersion": 4.7, "position": [2900, 560], "parameters": { "resource": "sheet", "operation": "appendOrUpdate", "authentication": "serviceAccount", "documentId": { "__rl": true, "mode": "id", "value": "1gI6vhq1nIoQaZZfGXoZ99OMLq4-PhL_bbbvJZ2Rst8M" }, "sheetName": { "__rl": true, "mode": "name", "value": "Job Pipeline" }, "columns": { "mappingMode": "defineBelow", "matchingColumns": ["Verified URL"], "value": {
       "Date Found": "={{ $now.toISO() }}",
       "Job Title": "={{ $('Check Verified URL').item.json.title }}",
       "Company": "={{ $('Check Verified URL').item.json.company }}",
@@ -120,7 +120,7 @@
       { "id": "Status", "displayName": "Status", "type": "string", "display": true, "canBeUsedToMatch": false },
       { "id": "Notes", "displayName": "Notes", "type": "string", "display": true, "canBeUsedToMatch": false }
     ] }, "credentials": { "googleApi": { "id": "XxrmDb4l1KgzQySt", "name": "Google Service Account account" } } } },
-    { "id": "c9539f91-4bb5-4c9a-b112-5fd6fb4446d4", "name": "Log Unverified Listing", "type": "n8n-nodes-base.googleSheets", "typeVersion": 4.7, "position": [2680, 940], "parameters": { "resource": "sheet", "operation": "append", "authentication": "serviceAccount", "documentId": { "__rl": true, "mode": "list", "value": "" }, "sheetName": { "__rl": true, "mode": "name", "value": "Unverified" }, "columns": { "mappingMode": "defineBelow", "value": {
+    { "id": "c9539f91-4bb5-4c9a-b112-5fd6fb4446d4", "name": "Log Unverified Listing", "type": "n8n-nodes-base.googleSheets", "typeVersion": 4.7, "position": [2680, 940], "parameters": { "resource": "sheet", "operation": "append", "authentication": "serviceAccount", "documentId": { "__rl": true, "mode": "id", "value": "1gI6vhq1nIoQaZZfGXoZ99OMLq4-PhL_bbbvJZ2Rst8M" }, "sheetName": { "__rl": true, "mode": "name", "value": "Unverified" }, "columns": { "mappingMode": "defineBelow", "value": {
       "Date Found": "={{ $now.toISO() }}", "Job Title": "={{ $json.title }}", "Company": "={{ $json.company }}", "Location": "={{ $json.location }}", "Tier": "={{ $json.tier }}", "Candidate URL": "={{ $json.sourceUrl }}", "Reason": "No verified live careers-page URL found via Exa"
     }, "schema": [
       { "id": "Date Found", "displayName": "Date Found", "type": "string", "display": true, "canBeUsedToMatch": false },
@@ -137,7 +137,7 @@
       { "id": "e3", "name": "Query", "value": "={{ $('Listings Loop').item.json.title }} - {{ $('Listings Loop').item.json.company }}", "type": "string" },
       { "id": "e4", "name": "Message", "value": "={{ $json.error?.message || JSON.stringify($json) }}", "type": "string" }
     ] } } },
-    { "id": "400634ca-2106-4b9f-9a59-3004982c8c33", "name": "Log Exa Error to Sheet", "type": "n8n-nodes-base.googleSheets", "typeVersion": 4.7, "position": [2440, 1080], "parameters": { "resource": "sheet", "operation": "append", "authentication": "serviceAccount", "documentId": { "__rl": true, "mode": "list", "value": "" }, "sheetName": { "__rl": true, "mode": "name", "value": "Error Log" }, "columns": { "mappingMode": "defineBelow", "value": {
+    { "id": "400634ca-2106-4b9f-9a59-3004982c8c33", "name": "Log Exa Error to Sheet", "type": "n8n-nodes-base.googleSheets", "typeVersion": 4.7, "position": [2440, 1080], "parameters": { "resource": "sheet", "operation": "append", "authentication": "serviceAccount", "documentId": { "__rl": true, "mode": "id", "value": "1gI6vhq1nIoQaZZfGXoZ99OMLq4-PhL_bbbvJZ2Rst8M" }, "sheetName": { "__rl": true, "mode": "name", "value": "Error Log" }, "columns": { "mappingMode": "defineBelow", "value": {
       "Timestamp": "={{ $json.Timestamp }}", "Source": "={{ $json.Source }}", "Query": "={{ $json.Query }}", "Message": "={{ $json.Message }}"
     }, "schema": [
       { "id": "Timestamp", "displayName": "Timestamp", "type": "string", "display": true, "canBeUsedToMatch": true },
@@ -163,6 +163,7 @@
     "Tag Raw Listings with Query Meta": { "main": [[{ "node": "Insert Raw Listings", "type": "main", "index": 0 }]] },
     "Insert Raw Listings": { "main": [[{ "node": "Apify Query Loop", "type": "main", "index": 0 }]] },
     "Format Apify Error": { "main": [[{ "node": "Log Apify Error to Sheet", "type": "main", "index": 0 }]] },
+    "Log Apify Error to Sheet": { "main": [[{ "node": "Apify Query Loop", "type": "main", "index": 0 }]] },
     "Get All Raw Listings": { "main": [[{ "node": "Dedupe and Filter Listings", "type": "main", "index": 0 }]] },
     "Dedupe and Filter Listings": { "main": [[{ "node": "Listings Loop", "type": "main", "index": 0 }]] },
     "Listings Loop": { "main": [[], [{ "node": "Exa Verify Search", "type": "main", "index": 0 }]] },
@@ -174,7 +175,8 @@
     "Company Research Output Parser": { "ai_outputParser": [[{ "node": "Company Research Agent", "type": "ai_outputParser", "index": 0 }]] },
     "Upsert Job Pipeline Row": { "main": [[{ "node": "Listings Loop", "type": "main", "index": 0 }]] },
     "Log Unverified Listing": { "main": [[{ "node": "Listings Loop", "type": "main", "index": 0 }]] },
-    "Format Exa Error": { "main": [[{ "node": "Log Exa Error to Sheet", "type": "main", "index": 0 }]] }
+    "Format Exa Error": { "main": [[{ "node": "Log Exa Error to Sheet", "type": "main", "index": 0 }]] },
+    "Log Exa Error to Sheet": { "main": [[{ "node": "Listings Loop", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" }
 }
