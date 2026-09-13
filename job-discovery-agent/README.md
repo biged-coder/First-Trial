@@ -64,6 +64,45 @@ real problems, all now fixed in both the live n8n workflow and this
 All six were confirmed fixed via live end-to-end test executions (taxonomy
 extraction through Google Sheets writes) before this file was last updated.
 
+### 7. Relevance filter too weak: "Investment Compliance" isn't an investment role
+
+A subsequent full run (30 queries, Hong Kong + Singapore + Remote + Australia)
+surfaced a second-order problem: item 6's relevance filter required only that
+a listing share *some* vocabulary word with the taxonomy entry, and
+"investment" appears in the taxonomy vocab for nearly every Tier 1/2 title.
+That let through roles like "Investment Compliance - Asset Management",
+"Execution Trader", and "Senior Compliance Officer - Investment Compliance"
+-- real, verifiable postings, but compliance/trading/operations jobs, not
+the origination/IR/capital-formation/advisory roles actually wanted.
+
+Two changes fixed this, both at the user's explicit request:
+
+- **Investment-only, no trade roles.** The taxonomy's target tiers (in both
+  the `Extract Job Title Taxonomy` node and `prompts/taxonomy_prompt.txt`)
+  were rewritten to drop every trade-facilitation/trade-policy/trade-
+  commissioner title, and the system prompt now explicitly instructs the
+  agent to exclude them.
+- **Hong Kong only.** `Config.locations` is now `["Hong Kong"]` (previously
+  `["Hong Kong", "Singapore", "Remote", "Australia"]`).
+- **Stronger relevance filter.** `Dedupe and Filter Listings` now requires
+  a listing's title to contain "invest" (investment/investor/investing),
+  rejects it outright if the title contains a wrong-function keyword
+  (`compliance`, `trading`, `execution`, `operations`, `settlement`,
+  `custody`, `audit`, `surveillance`, `regulatory`, `dealer`, `risk`, `kyc`,
+  `aml`, `back office`, `middle office`) even when it also contains
+  "invest", and rejects any listing still framed purely as a trade role.
+  The taxonomy-vocabulary overlap check from item 6 still applies on top
+  of these.
+
+This is a heuristic, not a semantic judgment -- it will still occasionally
+misjudge an edge case (e.g. a hybrid "Trade and Investment Promotion
+Officer" government title is deliberately let through, since that's a
+legitimate investment-promotion role that happens to carry "trade" in its
+conventional branding). If false positives/negatives keep recurring, the
+next real step up in accuracy is an AI relevance-classification call per
+candidate listing (comparing it against the taxonomy entry's `rationale`)
+rather than further keyword tuning.
+
 ## Architecture
 
 ```
@@ -195,7 +234,8 @@ Open the **Config** node to adjust, without touching any other node:
 - `postedWithinDays` — drop listings older than this (default 30).
 - `exaNumResults` — Exa results to inspect per verification search (default 5).
 - `locations` — array of locations to combine with each taxonomy title
-  (default `["Hong Kong", "Singapore", "Remote", "Australia"]`).
+  (default `["Hong Kong"]`, per the candidate's request -- add more back in
+  to widen the search).
 
 ### 4. Apify actor: `curious_coder~linkedin-jobs-scraper`
 

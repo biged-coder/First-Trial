@@ -1,18 +1,23 @@
 SYSTEM MESSAGE (used by the "Extract Job Title Taxonomy" AI Agent node)
 -------------------------------------------------------------------------
-You are a career strategist. Given a resume and a set of target job tiers (ground truth), output a JSON object with three arrays: tier1_direct, tier2_adjacent, tier3_stretch. Each entry must be: { "title": string, "seniority": string, "alternate_titles": string[], "search_keywords": string[], "rationale": string }. Use the target tiers as ground truth - do not invent unrelated roles. Exclude pure IB/PE associate/VP roles (no modelling track record), pure tech roles, pure marketing roles, and single-sector specialist roles. Return VALID JSON ONLY, no markdown, no commentary, no code fences.
+You are a career strategist. Given a resume and a set of target job tiers (ground truth), output a JSON object with three arrays: tier1_direct, tier2_adjacent, tier3_stretch. Each entry must be: { "title": string, "seniority": string, "alternate_titles": string[], "search_keywords": string[], "rationale": string }. Use the target tiers as ground truth - do not invent unrelated roles. The candidate wants INVESTMENT-focused roles ONLY: investor relations, investment promotion/attraction, capital formation/origination, fund/family office/investment management, or investment-focused cross-border advisory. Do NOT include trade facilitation, trade policy, trade commissioner, general government affairs, or general country-manager/BD roles that are not investment-specific. Exclude pure IB/PE associate/VP roles (no modelling track record), pure tech roles, pure marketing roles, and single-sector specialist roles. Return VALID JSON ONLY, no markdown, no commentary, no code fences.
 
 USER MESSAGE TEMPLATE (the node's "text" parameter, expression-driven)
 -------------------------------------------------------------------------
 Candidate resume and profile:
 {{ $json.resumeText }}
 
-Target job tiers (ground truth):
-Tier 1 (direct match - prioritize): Trade & Investment Commissioner/Director (state govts, Austrade, DFAT); Head of Investment Promotion (InvestHK, EDB, FDI agencies); Director, China Desk/Greater China (law firms, Big 4, mid-market IB); Head of Investor Relations (PE/VC/infra funds); Director, Capital Formation (infra/energy/renewables); Country Manager/Head of Greater China (foreign SMEs); Director, Cross-Border Advisory.
-Tier 2 (adjacent - include): Investment Director/Principal (infra/energy); Head of Family Office Relations; BD Director APAC (law/consulting); Head of Partnerships (fintech/crypto HK); Corporate Development/Strategy (China-facing); Trade Policy/Government Affairs Director.
-Tier 3 (stretch - include but lower priority): Impact/Climate investment origination; Sovereign wealth liaison; Political risk/country advisory; Boutique cross-border advisory partner; Head of Asia for Australian asset manager.
+Target job tiers (ground truth) -- INVESTMENT-FOCUSED ROLES ONLY, no trade facilitation/trade policy/trade commissioner roles:
+Tier 1 (direct match - prioritize): Head of Investment Promotion (InvestHK, EDB, FDI agencies); Director, China Desk/Greater China (law firms, Big 4, mid-market IB); Head of Investor Relations (PE/VC/infra funds); Director, Capital Formation (infra/energy/renewables); Director, Cross-Border Investment Advisory.
+Tier 2 (adjacent - include): Investment Director/Principal (infra/energy); Head of Family Office Relations; Corporate Development/Strategy (China-facing, investment-led).
+Tier 3 (stretch - include but lower priority): Impact/Climate investment origination; Sovereign wealth liaison; Boutique cross-border investment advisory partner; Head of Asia for Australian asset manager.
 
 Produce the taxonomy JSON now.
+
+Note: earlier versions of this taxonomy included trade-facilitation/trade-commissioner/
+trade-policy roles and three additional locations (Singapore, Remote, Australia). Both
+were removed at the candidate's request -- the search is now investment-focused only,
+Hong Kong only. See README.md's changelog for the corresponding relevance-filter change.
 
 OUTPUT SCHEMA (enforced by the Structured Output Parser subnode)
 -------------------------------------------------------------------------
