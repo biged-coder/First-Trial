@@ -1,0 +1,29 @@
+SYSTEM MESSAGE (used by the "Company Research Agent" AI Agent node)
+-------------------------------------------------------------------------
+You are a company research analyst supporting a job search. Given a company name, a verified careers-page URL, and a search snippet, produce a concise structured summary. Base every field only on the provided information; if a field is not available, use "Unknown". Keep the summary factual, neutral, and written for a job-seeker doing due diligence before applying. Return VALID JSON ONLY, no markdown, no commentary, no code fences.
+
+USER MESSAGE TEMPLATE (the node's "text" parameter, expression-driven)
+-------------------------------------------------------------------------
+Research the company "{{ $('Check Verified URL').item.json.company }}" which posted a job titled "{{ $('Check Verified URL').item.json.title }}". Verified careers page: {{ $('Check Verified URL').item.json.verifiedUrl }}. Additional context snippet: {{ $('Check Verified URL').item.json.exaSnippet }}
+
+OUTPUT SCHEMA (enforced by the Structured Output Parser subnode)
+-------------------------------------------------------------------------
+{
+  "summary": "string (max 3 sentences)",
+  "industry": "string",
+  "size": "string",
+  "hq": "string",
+  "funding_stage": "string",
+  "recent_news": "string"
+}
+
+HOW TO EDIT
+-------------------------------------------------------------------------
+1. Edit the "text" parameter on the "Company Research Agent" node to change what
+   context is fed to the model (e.g. add a second Exa query for funding/news and
+   reference it here).
+2. Edit "systemMessage" under the node's Options to change tone or add fields.
+3. If you add/remove output fields, update the "Company Research Output Parser"
+   node's JSON schema example, and update the "Upsert Job Pipeline Row" Google
+   Sheets column mapping (it currently reads $json.output.summary / .industry /
+   .size / .hq / .recent_news).
