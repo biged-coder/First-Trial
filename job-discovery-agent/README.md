@@ -103,6 +103,50 @@ next real step up in accuracy is an AI relevance-classification call per
 candidate listing (comparing it against the taxonomy entry's `rationale`)
 rather than further keyword tuning.
 
+### 8. Dedupe was dropping legitimate listings; verification was accepting job boards as "the company's own page"
+
+Two more issues surfaced running the tightened (investment-only, HK-only)
+search on real data:
+
+- **Dedupe ran before relevance filtering.** The same `(company, title)`
+  pair can appear multiple times in the raw listings, each tagged with a
+  different query's metadata (the Apify actor's own search often returns
+  overlapping results across different title queries). `Dedupe and Filter
+  Listings` was deduping on first-seen occurrence regardless of whether
+  that occurrence passed the relevance check -- so if the first copy of a
+  genuinely relevant listing happened to be tagged with an unrelated
+  query (and so failed the vocabulary-overlap check), the listing was
+  dropped even though a later, correctly-tagged copy would have passed.
+  Fixed by filtering for relevance first, then deduping only the
+  survivors.
+- **`Check Verified URL` was accepting third-party job boards as "the
+  company's own posting."** Its fallback heuristic (page title mentions
+  the company + URL has a career-ish word) matched aggregator sites like
+  `joblum.com`, `trabajo.org`, and `ctgoodjobs.hk` -- in one case, the
+  "verified" URL wasn't even the same job. The user's requirement is
+  specifically the company's own posting, not a recruiter or job-board
+  listing of it (some employers deliberately post directly to avoid
+  third-party fees). Fixed with an explicit aggregator/recruiter-domain
+  blocklist checked before any other heuristic, and the loose title-based
+  fallback was removed entirely.
+- **ATS-hosted company pages are still accepted as "the company's own
+  posting."** Platforms like Greenhouse (`boards.greenhouse.io/company`),
+  Lever (`jobs.lever.co/company`), Workable, SmartRecruiters, BambooHR,
+  etc. host a company's actual official application process under vendor
+  infrastructure -- these are not third-party listings of a job posted
+  elsewhere, they *are* the posting. `Check Verified URL` special-cases
+  these platforms: instead of requiring the company name in the hostname
+  (which will never match a vendor domain), it accepts a match when the
+  company name appears anywhere in the URL (subdomain or path, which is
+  how these platforms identify the employer).
+
+Net effect: verification is now strict about *what* counts (only the
+employer's own posting, ATS-hosted or self-hosted) rather than *how many*
+results come back verified -- a lower verified count than earlier runs is
+expected and correct if most matching candidates in a given batch are
+recruiter-posted or don't have a discoverable own-domain/ATS page in Exa's
+top results.
+
 ## Architecture
 
 ```
