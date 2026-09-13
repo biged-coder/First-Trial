@@ -147,6 +147,36 @@ expected and correct if most matching candidates in a given batch are
 recruiter-posted or don't have a discoverable own-domain/ATS page in Exa's
 top results.
 
+### 9. `Check Verified URL` never verified anything, even obvious matches
+
+After shipping the ATS-platform fix above, a test run against 7 real
+candidates still came back 0/7 verified -- including a case (Lalamove)
+where Exa's very first search result was `https://jobs.lever.co/lalamove`,
+which should have matched the ATS-platform branch outright. Manually
+replaying the node's exact logic against that exact input in a plain
+Node.js REPL matched correctly, so the matching *rules* were never the
+problem. The suspect was the one runtime-dependent line in the function:
+
+```js
+try { host = new URL(url).hostname.toLowerCase(); } catch (e) { continue; }
+```
+
+n8n's Code node sandbox does not reliably expose the `URL` global, so this
+threw on every result for every candidate, and the `catch { continue; }`
+silently absorbed it -- match stayed `null` no matter what was in Exa's
+results. This is a good example of why "it works when I read the code" and
+"it works when the platform actually runs it" are different questions:
+the logic was correct, the environment assumption wasn't.
+
+Fixed by replacing the `URL` constructor with a small regex-based
+`getHost()` helper that has no dependency on that global. Re-ran the same
+test afterward: Lalamove now correctly verifies against
+`https://jobs.lever.co/lalamove`. Also added `expertini.com` and
+`builtin.com` (a job-board scraper mirror and a company-profile/culture
+site, respectively -- neither is the employer's own posting) to the
+aggregator blocklist, since both showed up as false-positive risks in the
+same test batch.
+
 ## Architecture
 
 ```
