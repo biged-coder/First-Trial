@@ -177,6 +177,69 @@ site, respectively -- neither is the employer's own posting) to the
 aggregator blocklist, since both showed up as false-positive risks in the
 same test batch.
 
+### 10. Tier 3 results were weak: junior roles, a recruiter agency, a retail-advisory role
+
+A full-scale run verified 8 listings, but the user flagged that while
+Tier 1 was good, Tier 3 wasn't: it included "Investment Associate" /
+"Associate - Investment Banking" / a graduate programme (individual-
+contributor, analyst-track roles), a listing from **KOS International
+Talent Group** (a staffing agency posting someone else's job on its own
+domain -- still not the employer's own posting), and an HSBC "Investment
+Counsellor" role (client-facing retail wealth advisory/sales, not
+origination or IR). The user's own framing of why: their strength is
+investor relations + deal origination (BD combined with investment), and
+they hold no CFA or other completed financial-analyst certification --
+so anything assuming that qualification track (modelling, valuation,
+portfolio/credit analysis) is a poor fit regardless of topic overlap.
+
+Fixed in two places:
+- `Extract Job Title Taxonomy`'s system message was rewritten to require
+  the AI to explicitly weigh named STRENGTHS (relationship-driven
+  cross-border origination, established China/family-office/PE network,
+  capital-introduction track record) against named GAPS (no completed
+  CFA/CPA/portfolio-management certification, no modelling/valuation/
+  buy-side execution background) before including each tier entry, and to
+  state that reasoning in the entry's `rationale`. All entries are now
+  required to be Director-level or above.
+- `Dedupe and Filter Listings`'s `isRelevant()` gained a `JUNIOR_TITLE`
+  regex (Associate/Analyst/Graduate Programme/Intern/Trainee) and a
+  `RECRUITER_COMPANY` regex (talent group/recruitment/staffing/headhunt/
+  executive search/manpower) as a runtime safety net -- these catch junior
+  or agency-posted listings even if a job board's own search surfaces them
+  regardless of the taxonomy's wording. Re-tested afterward: all surfaced
+  candidates were Director/Manager/VP-level, no junior or recruiter-agency
+  false positives.
+
+### 11. Include/exclude keyword gate, applied before any Apify call
+
+The user wanted an explicit, editable include/exclude list for what
+counts as a relevant position -- checked *before* Apify is ever queried
+(not just post-hoc filtering of scraped results), and eventually settable
+via a Telegram confirmation step. For now it's a plain Config field.
+
+Added `includeKeywords` and `excludeKeywords` arrays to the `Config` node
+and a filter step in `Build Apify Queries` that runs right after the AI
+taxonomy comes back: each tier entry's `title` + `alternate_titles` +
+`search_keywords` text is checked against both lists (reject on any
+exclude match; if `includeKeywords` is non-empty, require at least one
+include match) *before* the entry is turned into Apify queries. This is
+deliberately independent of the taxonomy prompt -- tightening or loosening
+scope is a Config edit, not a prompt change, and it's the field a future
+Telegram human-in-the-loop step would update. It does not replace the
+runtime `Dedupe and Filter Listings` guards (junior titles, recruiter
+agencies, wrong-function keywords): those still apply to actual scraped
+listings, which are uncontrolled and can surface junk regardless of
+taxonomy/keyword scope.
+
+Human-in-the-loop (Telegram) was discussed but deferred: the user doesn't
+have a Telegram bot set up yet. n8n has a built-in `sendAndWait`
+operation (Telegram/Slack/Discord/Gmail/etc.) and a
+`telegramHitlTool` Agent tool purpose-built for this -- either the AI
+Agent calls it mid-reasoning to ask a clarifying question and pause for a
+reply, or (the user's stated preference once ready) the full generated
+taxonomy is always sent for a yes/no/edit confirmation before Apify
+queries are built. Revisit once a bot token is available.
+
 ## Architecture
 
 ```
@@ -310,6 +373,25 @@ Open the **Config** node to adjust, without touching any other node:
 - `locations` — array of locations to combine with each taxonomy title
   (default `["Hong Kong"]`, per the candidate's request -- add more back in
   to widen the search).
+- `includeKeywords` — array of strings; a taxonomy entry must match at
+  least one (checked against its title + alternate_titles + search_keywords)
+  or it's dropped before any Apify query is built. Leave empty to disable
+  (no include requirement). Default covers investor relations, deal/capital
+  origination, capital formation/raising, investment promotion/attraction,
+  family office relations, cross-border investment advisory, and
+  investment-led corporate development/BD.
+- `excludeKeywords` — array of strings; a taxonomy entry matching any of
+  these is dropped before any Apify query is built, regardless of
+  `includeKeywords`. Default covers trade/compliance/execution/risk
+  functions, junior titles (Analyst/Associate/Graduate Programme/Intern/
+  Trainee), roles assuming a completed CFA/portfolio-management
+  qualification, retail wealth/private-banking advisory, and recruitment/
+  staffing agencies.
+
+This is a config-level gate, separate from the AI taxonomy prompt and from
+the runtime relevance filter in `Dedupe and Filter Listings` (see
+Changelog item 11) -- edit these two arrays directly to retarget scope
+without touching any prompt or code.
 
 ### 4. Apify actor: `curious_coder~linkedin-jobs-scraper`
 

@@ -1,23 +1,40 @@
 SYSTEM MESSAGE (used by the "Extract Job Title Taxonomy" AI Agent node)
 -------------------------------------------------------------------------
-You are a career strategist. Given a resume and a set of target job tiers (ground truth), output a JSON object with three arrays: tier1_direct, tier2_adjacent, tier3_stretch. Each entry must be: { "title": string, "seniority": string, "alternate_titles": string[], "search_keywords": string[], "rationale": string }. Use the target tiers as ground truth - do not invent unrelated roles. The candidate wants INVESTMENT-focused roles ONLY: investor relations, investment promotion/attraction, capital formation/origination, fund/family office/investment management, or investment-focused cross-border advisory. Do NOT include trade facilitation, trade policy, trade commissioner, general government affairs, or general country-manager/BD roles that are not investment-specific. Exclude pure IB/PE associate/VP roles (no modelling track record), pure tech roles, pure marketing roles, and single-sector specialist roles. Return VALID JSON ONLY, no markdown, no commentary, no code fences.
+You are a career strategist. Given a resume and a set of target job tiers (ground truth), output a JSON object with three arrays: tier1_direct, tier2_adjacent, tier3_stretch. Each entry must be: { "title": string, "seniority": string, "alternate_titles": string[], "search_keywords": string[], "rationale": string }. Use the target tiers as ground truth - do not invent unrelated roles.
+
+Before producing each entry, explicitly weigh the candidate's STRENGTHS against their GAPS and only include roles that play to the strengths while avoiding the gaps:
+STRENGTHS: 10+ years of relationship-driven, cross-border deal origination and investor engagement focused on Greater China; an established network across family offices, PE/VC funds, government-linked investment bodies, and institutional investors; a track record of introducing capital into infrastructure, energy, and advanced-manufacturing opportunities; fluent Mandarin and English; comfort operating as the bridge between capital and opportunity (structuring investor narratives, running outreach, building conviction) rather than as a desk-bound analyst.
+GAPS: no CFA, CPA, or other completed financial-analyst/portfolio-management certification (CAIA Level I is in progress, not completed); no hands-on financial modelling, valuation, or buy-side execution track record; not a fit for pure analyst/associate roles, asset-management portfolio-management roles, or credit/equity research roles that assume that qualification track.
+
+Every role you include must be justifiable primarily by the STRENGTHS, and must not require the candidate to compensate for a GAP. Say so briefly in each entry's rationale (e.g. "leverages origination network, no modelling required"). If a tier's ground-truth title would only make sense for someone with the GAPS (e.g. a role that is fundamentally financial-analysis-driven), narrow the entry's alternate_titles/search_keywords toward the origination/relationship angle of that title rather than dropping the tier slot silently.
+
+The candidate wants INVESTOR RELATIONS and DEAL/CAPITAL ORIGINATION roles specifically -- roles that combine business development with investment, such as investor relations, capital formation/origination, investment promotion/attraction, fund/family office relationship management, or investment-focused cross-border origination advisory. EXCLUDE any role that is Analyst/Associate-level, financial-modelling-focused, portfolio-management-focused, or otherwise assumes a securities/credit analysis qualification track, even if it has "investment" in the title (e.g. "Investment Associate", "Investment Analyst", "Associate - Investment Banking" are all OUT). Also exclude trade facilitation, trade policy, trade commissioner, general government affairs, general country-manager/BD roles that are not investment-specific, pure IB/PE associate/VP roles, pure tech roles, pure marketing roles, single-sector specialist roles, and client-facing retail wealth/private-banking advisory roles (e.g. "Investment Counsellor", relationship manager to individual clients) since those are sales roles, not origination/IR. All entries should be Director-level or above (Head, Director, Principal, VP+) reflecting 10+ years of experience. Return VALID JSON ONLY, no markdown, no commentary, no code fences.
 
 USER MESSAGE TEMPLATE (the node's "text" parameter, expression-driven)
 -------------------------------------------------------------------------
 Candidate resume and profile:
 {{ $json.resumeText }}
 
-Target job tiers (ground truth) -- INVESTMENT-FOCUSED ROLES ONLY, no trade facilitation/trade policy/trade commissioner roles:
-Tier 1 (direct match - prioritize): Head of Investment Promotion (InvestHK, EDB, FDI agencies); Director, China Desk/Greater China (law firms, Big 4, mid-market IB); Head of Investor Relations (PE/VC/infra funds); Director, Capital Formation (infra/energy/renewables); Director, Cross-Border Investment Advisory.
-Tier 2 (adjacent - include): Investment Director/Principal (infra/energy); Head of Family Office Relations; Corporate Development/Strategy (China-facing, investment-led).
-Tier 3 (stretch - include but lower priority): Impact/Climate investment origination; Sovereign wealth liaison; Boutique cross-border investment advisory partner; Head of Asia for Australian asset manager.
+Target job tiers (ground truth) -- INVESTOR RELATIONS + DEAL/CAPITAL ORIGINATION ROLES ONLY. The candidate's core strength is relationship-driven deal origination combined with investor relations/BD -- NOT financial analysis, modelling, portfolio management, or securities research. The candidate holds no CFA, CAIA (in progress, not completed), CPA, or other financial analyst/portfolio-management certification -- do not include roles that assume one. No trade facilitation/trade policy/trade commissioner roles:
+Tier 1 (direct match - prioritize): Head of Investor Relations (PE/VC/infra funds); Director, Capital Formation / Deal Origination (infra/energy/renewables); Head of Investment Promotion & Origination (InvestHK, EDB, FDI agencies); Director, Cross-Border Investment Origination & Advisory.
+Tier 2 (adjacent - include): Investment Director/Principal - Origination (infra/energy); Head of Family Office Relations & Origination; Corporate Development / Investment-led BD (China-facing).
+Tier 3 (stretch - include but lower priority): Head of Asia, Origination & Investor Relations (Australian/international asset manager); Boutique Cross-Border Investment Origination Advisory Partner; Impact/Climate Investment Origination.
 
 Produce the taxonomy JSON now.
 
-Note: earlier versions of this taxonomy included trade-facilitation/trade-commissioner/
-trade-policy roles and three additional locations (Singapore, Remote, Australia). Both
-were removed at the candidate's request -- the search is now investment-focused only,
-Hong Kong only. See README.md's changelog for the corresponding relevance-filter change.
+Note: earlier versions of this taxonomy were broader (included trade-
+facilitation/trade-commissioner/trade-policy roles, three additional
+locations, and no explicit strengths-vs-gaps framing or CFA/analyst
+exclusion). It was narrowed in stages, per the candidate's feedback, to:
+(1) investment-only, Hong Kong-only; (2) investor relations + deal/capital
+origination specifically, since that's the actual combination of BD and
+investment experience the candidate has, with an explicit note that they
+hold no CFA or other completed financial-analyst certification so
+analyst/associate/modelling-track roles should be excluded outright, not
+just deprioritized. See README.md's changelog (items 7-11) for the full
+sequence of fixes this produced, including a config-level include/exclude
+keyword gate (Config.includeKeywords / Config.excludeKeywords) applied in
+"Build Apify Queries" before any Apify call is made.
 
 OUTPUT SCHEMA (enforced by the Structured Output Parser subnode)
 -------------------------------------------------------------------------
@@ -39,11 +56,15 @@ HOW TO EDIT
 -------------------------------------------------------------------------
 To change the candidate's profile, target tiers, or output schema:
 1. Update the "Resume Text" Set node in the workflow for a new resume/profile.
-2. Edit the tier definitions directly in the "Extract Job Title Taxonomy" node's
-   "text" parameter (or paste an updated version of this file's user message
-   template back in).
-3. Edit the "systemMessage" field under the node's Options if you want to change
-   the rules (e.g. which roles to exclude).
-4. If you change the output shape, update the "Taxonomy Output Parser" node's
-   JSON schema example to match, and update "Build Apify Queries" (Code node)
-   if field names change.
+2. Edit the tier definitions directly in the "Extract Job Title Taxonomy"
+   node's "text" parameter (or paste an updated version of this file's user
+   message template back in).
+3. Edit the "systemMessage" field under the node's Options if you want to
+   change the strengths/gaps framing or exclusion rules.
+4. If you change the output shape, update the "Taxonomy Output Parser"
+   node's JSON schema example to match, and update "Build Apify Queries"
+   (Code node) if field names change.
+5. To retarget scope WITHOUT touching this prompt, edit the Config node's
+   `includeKeywords` / `excludeKeywords` arrays instead -- they're applied
+   in "Build Apify Queries" before any Apify call, independent of what the
+   AI generates here.
